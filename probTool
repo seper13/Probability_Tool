@@ -1,0 +1,325 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import numpy as np
+from scipy.stats import norm
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
+import scipy.stats
+
+### function interpolating
+def interpolatedDelay(inputAry, outputAry , inverse=0):
+    
+    x = inputAry.squeeze()
+    y = outputAry.squeeze()
+    fl = interp1d(x,y,kind = 'linear',fill_value='extrapolate')
+    if inverse ==1:
+        fl = interp1d(y,x,kind = 'linear', fill_value='extrapolate', bounds_error='False' )
+    
+    return fl
+
+
+### PDF conv
+def pdfCONV(convAry1, convAry2, X_range1, X_range2 , ratio, Conv_N, inverse=0): ### if u want to flip your X_range2, inverse = 1 (because (1-CDF(x)) value)
+    rv = norm(loc=0, scale=1) 
+    delay_N1 = len(convAry1)
+    delay_N2 = len(convAry2)
+ 
+    ### interpolation of Delay Array
+    X1_delaytoSigma = interpolatedDelay(convAry1, X_range1) ### Ary1 ratio added
+    if inverse == 0:
+        X2_delaytoSigma = interpolatedDelay(ratio*convAry2, X_range2)
+    if inverse == 1:
+        X2_delaytoSigma = interpolatedDelay(ratio*convAry2, np.flipud(X_range2))
+ 
+    
+    ### X1,X2 Delay Value
+    X1_valueRange = np.linspace(convAry1[0], convAry1[delay_N1-1], Conv_N) #### Ary1 ratio added
+    X2_valueRange = np.linspace(ratio*convAry2[0], ratio*convAry2[delay_N2-1], Conv_N)
+    
+    [x1min,x2min] = [np.min(X1_valueRange), np.min(X2_valueRange)]
+    [x1max,x2max] = [np.max(X1_valueRange), np.max(X2_valueRange)]
+    
+    Y_valueRange = np.linspace(x1min+x2min,x1max+x2max,Conv_N)
+    x1step = (x1max - x1min)/(Conv_N-1)
+    
+    ### input : f1(Ary1) and f2(Ary2) => cdf1, cdf2 , output : f(Ary1)*f(Ary2) => convoluted cdf
+    j=0
+    CDFy = []
+    CDFy_delay = []
+    rv = norm(loc=0, scale=1)
+    for y in Y_valueRange:
+            prob_y = 0
+            i=2
+            while True:
+                x1 = X1_valueRange[i]
+                if (y-x1) < np.min(X2_valueRange): ###x1 is too large, so no x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 0
+                    prob_y += value
+                elif (y-x1) > np.max(X2_valueRange): ###x1 is too small, so any x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 1
+                    prob_y += value
+                else:
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * rv.cdf(X2_delaytoSigma(y-x1))
+                    prob_y += value
+                i += 1
+                if i>=Conv_N:
+                    prob_y = float(prob_y)
+                    break
+            CDFy.append(prob_y)
+            CDFy_delay.append(y)
+            j += 1
+    print("Convolution succeed ! ")
+    return CDFy, CDFy_delay, Conv_N
+
+
+### PDF conv with difference
+def pdfCONV_diff(convAry1, convAry2, X_range1, X_range2 , ratio, Conv_N, inverse=0): ### x1 have lower delay than x2
+    rv = norm(loc=0, scale=1) 
+    delay_N1 = len(convAry1)
+    delay_N2 = len(convAry2)
+
+    ### interpolation of Delay Array
+    X1_delaytoSigma = interpolatedDelay(convAry1, X_range1) ### Ary1 ratio added
+    if inverse == 0:
+        X2_delaytoSigma = interpolatedDelay(ratio*convAry2, X_range2)
+    if inverse == 1:
+        X2_delaytoSigma = interpolatedDelay(ratio*convAry2, np.flipud(X_range2))
+
+    ### X1,X2 Delay Value
+    X1_valueRange = np.linspace(convAry1[0], convAry1[delay_N1-1], Conv_N) #### Ary1 ratio added
+    X2_valueRange = np.linspace(ratio*convAry2[0], ratio*convAry2[delay_N2-1], Conv_N)
+    
+    [x1min,x2min] = [np.min(X1_valueRange), np.min(X2_valueRange)]
+    [x1max,x2max] = [np.max(X1_valueRange), np.max(X2_valueRange)]
+    
+    Y_valueRange = np.linspace(x2min-x1max,x2max-x1min,Conv_N)
+    x1step = (x1max - x1min)/(Conv_N-1)
+    
+    ### input : f1(Ary1) and f2(Ary2) => cdf1, cdf2 , output : f(Ary1)*f(Ary2) => convoluted cdf
+    j=0
+    CDFy = []
+    CDFy_delay = []
+    rv = norm(loc=0, scale=1)
+    for y in Y_valueRange:
+            prob_y = 0
+            i=2
+            while True:
+                x1 = X1_valueRange[i]
+                if (y+x1) < np.min(X2_valueRange): ###x1 is too large, so no x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 0
+                    prob_y += value
+                elif (y+x1) > np.max(X2_valueRange): ###x1 is too small, so any x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 1
+                    prob_y += value
+                else:
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * rv.cdf(X2_delaytoSigma(y+x1))
+                    prob_y += value
+                i += 1
+                if i>=Conv_N:
+                    prob_y = float(prob_y)
+                    break
+            CDFy.append(prob_y)
+            CDFy_delay.append(y)
+            j += 1
+    print("Convolution succeed ! ")
+    return CDFy, CDFy_delay, Conv_N
+
+### PDF conv
+def pdfCONV_2ratio(convAry1, convAry2, X_range1, X_range2 , ratio1, ratio2, Conv_N, inverse=0): ### if u want to flip your X_range2, inverse = 1 (because (1-CDF(x)) value)
+    rv = norm(loc=0, scale=1) 
+    delay_N1 = len(convAry1)
+    delay_N2 = len(convAry2)
+
+    ### interpolation of Delay Array
+    X1_delaytoSigma = interpolatedDelay(ratio1*convAry1, X_range1) ### Ary1 ratio added
+    if inverse == 0:
+        X2_delaytoSigma = interpolatedDelay(ratio2*convAry2, X_range2)
+    if inverse == 1:
+        X2_delaytoSigma = interpolatedDelay(ratio2*convAry2, np.flipud(X_range2))
+ 
+        
+    ### X1,X2 Delay Value
+    X1_valueRange = np.linspace(ratio1*convAry1[0], ratio1*convAry1[delay_N1-1], Conv_N) #### Ary1 ratio added
+    X2_valueRange = np.linspace(ratio2*convAry2[0], ratio2*convAry2[delay_N2-1], Conv_N)
+    
+    [x1min,x2min] = [np.min(X1_valueRange), np.min(X2_valueRange)]
+    [x1max,x2max] = [np.max(X1_valueRange), np.max(X2_valueRange)]
+    
+    Y_valueRange = np.linspace(x1min+x2min,x1max+x2max,Conv_N)
+    x1step = (x1max - x1min)/(Conv_N-1)
+    
+    ### input : f1(Ary1) and f2(Ary2) => cdf1, cdf2 , output : f(Ary1)*f(Ary2) => convoluted cdf
+    j=0
+    CDFy = []
+    CDFy_delay = []
+    rv = norm(loc=0, scale=1)
+    for y in Y_valueRange:
+            prob_y = 0
+            i=2
+            while True:
+                x1 = X1_valueRange[i]
+                if (y-x1) < np.min(X2_valueRange): ###x1 is too large, so no x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 0
+                    prob_y += value
+                elif (y-x1) > np.max(X2_valueRange): ###x1 is too small, so any x2 can achieve the goal
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * 1
+                    prob_y += value
+                else:
+                    value = ( rv.cdf(X1_delaytoSigma(x1)) - rv.cdf(X1_delaytoSigma(x1-x1step)) ) * rv.cdf(X2_delaytoSigma(y-x1))
+                    prob_y += value
+                i += 1
+                if i>=Conv_N:
+                    prob_y = float(prob_y)
+                    break
+            CDFy.append(prob_y)
+            CDFy_delay.append(y)
+            j += 1
+    #print("Convolution succeed ! ")
+    return CDFy, CDFy_delay, Conv_N
+
+
+# [CDFy,CDFy_delay, Conv_N] = pdfCONV(fallDelay,riseDelay, X_range = sigmaRange, ratio=1, Conv_N=200, inverse = 1 )
+
+### 
+def ConvProbExtract(CDFy,CDFy_delay,Conv_N):
+    rv = norm(loc=0, scale=1)
+    CDFysigma = []
+    for prob in CDFy:
+        CDFysigma.append(rv.ppf(prob))
+    rangebnd = np.flipud(np.sort(CDFysigma))
+
+    CDFy_sort = np.flipud(CDFy)
+    i=0
+    comp = 0
+    for x in rangebnd:
+        if comp == 1:
+            rangebnd = x
+            i=0
+            break
+           
+        if x <= 8 :
+            comp += 1
+        i += 1
+
+    finalFunctiony = \
+        interpolatedDelay( np.array( CDFysigma[1:Conv_N]), np.array(CDFy_delay[1:Conv_N])) ##### 0 --> 1 changed!
+    
+    fittedRange = np.linspace(-rangebnd,rangebnd,Conv_N)
+    fittedValue = []
+    
+    ###fitted Value extraction
+    for rangeX in fittedRange:
+        fittedValue.append(finalFunctiony(rangeX))
+    
+    return fittedRange,fittedValue
+
+def customInterp1d(xRangeReal,xRangeInput,yValue): ###input : real xRange, real yValue, custom Range, output : customized yValue function
+    x = xRangeReal.squeeze()
+    y = yValue.squeeze()
+    fl = interp1d(x,y,kind = 'linear', fill_value='extrapolate')
+    
+    newY = []
+    for a in xRangeInput:
+        newY.append(fl(a))
+    
+    newY = np.array(newY)
+    xNEW = xRangeReal.squeeze()
+    yNEW = newY.squeeze()
+    flNEW = interp1d(xNEW,yNEW,kind = 'linear', fill_value='extrapolate')
+    return flNEW
+
+
+def findSigma(MonteNumber, sigma): ### usage : input = Monte Length,sigma. 
+                                   ### usage : output = MonteData[output] << MonteData must be sorted the value you want to know at sigma
+    i = 0                          ### usage : so you can get the value you want to know at sigma
+    ValueList = []
+    rv = norm(loc = 0, scale = 1)
+    while True:
+        value = rv.ppf((i+1)/(MonteNumber+1))
+        ValueList.append(value)
+        i += 1
+        if i >= MonteNumber:
+            ValueList = np.array(ValueList)
+            break
+    if sigma == 0:
+        result = int((MonteNumber/2)-1)
+    elif sigma != 0:
+        new_array = np.array(abs(ValueList - sigma))
+        result = int(np.where( new_array == np.min(new_array))[0])
+    return result
+
+
+
+def stepFitting(slope_high, slope_low, previous_data_list,fittedRange, MonteData, zeroPointValue, plotOption = 0  ):
+    dataLength = len(previous_data_list)
+    
+    ### low region, high region interpolated with slope
+    x = np.array(fittedRange).squeeze()
+    y_high = slope_high*np.array(previous_data_list).squeeze()
+    y_low = slope_low*np.array(previous_data_list).squeeze()
+    fl_high = interp1d(x,y_high,'linear')
+    fl_low = interp1d(x,y_low,'linear')
+    
+    ### value extarction
+    data_list_high = []
+    for a in fittedRange:
+        data_list_high.append(fl_high(a))
+    
+    data_list_low = []
+    for a in fittedRange:
+        data_list_low.append(fl_low(a))
+        
+    diff_high = zeroPointValue - fl_high(0)
+    diff_low = zeroPointValue - fl_low(0)
+
+    ### summation of low region , high region
+    x = np.array(fittedRange).squeeze()
+    y = np.append( slope_low*np.array(previous_data_list[0:int(dataLength/2)])+diff_low,
+                  slope_high*np.array(previous_data_list[int(dataLength/2):int(dataLength)])+diff_high).squeeze()
+    fl = interp1d(x,y,'linear')
+    
+    ### value extarction
+    data_list = []
+    for a in fittedRange:
+        data_list.append(fl(a))
+    ### plot option
+    if plotOption == 1:
+        scipy.stats.probplot(MonteData, plot=plt)
+        plt.scatter(fittedRange[0:len(fittedRange)-1],np.array(data_list)[0:len(data_list)-1], color='g')
+        plt.legend()
+
+    return fittedRange, data_list, fl
+
+
+def directFitting(slope, previous_data_list,fittedRange, MonteData, zeroPointValue, plotOption = 0  ):
+    dataLength = len(previous_data_list)
+    
+    ### low region, high region interpolated with slope
+    x = np.array(fittedRange).squeeze()
+    y = slope*np.array(previous_data_list).squeeze()
+    fl = interp1d(x,y,'linear')
+    
+    ### value extarction
+    data_list_high = []
+    for a in fittedRange:
+        data_list_high.append(fl(a))
+    
+    diff = zeroPointValue - fl(0)
+
+    ### summation of low region , high region
+    x = np.array(fittedRange).squeeze()
+    y = (slope*np.array(previous_data_list)+diff).squeeze()
+    fl = interp1d(x,y,'linear')
+    
+    ### value extarction
+    data_list = []
+    for a in fittedRange:
+        data_list.append(fl(a))
+    ### plot option
+    if plotOption == 1:
+        scipy.stats.probplot(MonteData, plot=plt)
+        plt.scatter(fittedRange[0:len(fittedRange)-1],np.array(data_list)[0:len(data_list)-1], color='g')
+        
+    return fittedRange, data_list, fl
+
